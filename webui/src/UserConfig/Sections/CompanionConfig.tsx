@@ -12,6 +12,7 @@ export const CompanionConfig = observer(function CompanionConfig(props: UserConf
 		<>
 			<UserConfigHeadingRow label="Installation Settings" helpAction="/user-guide/config/settings#general" />
 			<UserConfigTextInputRow userConfig={props} label="Installation Name" field="installName" />
+			<UserConfigTextInputRow userConfig={props} label="Station Call Letters" field="stationCallLetters" />
 			<UserConfigSwitchRow
 				userConfig={props}
 				label="Announce Companion on the network (mDNS/Bonjour)"

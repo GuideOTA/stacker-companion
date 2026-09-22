@@ -6,20 +6,22 @@ import { observer } from 'mobx-react-lite'
 import { Suspense, useCallback, useContext, useEffect, useState } from 'react'
 import { useIdleTimer } from 'react-idle-timer'
 import { PuffLoader } from 'react-spinners'
+import { ADMIN_PASSWORD_MIN_LENGTH } from '@companion-app/shared/Model/AdminAuth.js'
 import { Grid } from '~/Components/Grid'
 import { useEvictDeadCollapseState } from '~/Helpers/useEvictDeadCollapseState.js'
 import { useMountEffect } from '~/Resources/util.js'
 import { RootAppStoreContext } from '~/Stores/RootAppStore.js'
 import { Button } from './Components/Button.js'
-import { Form, InputGroup } from './Components/Form.js'
+import { Form, FormLabel, InputGroup } from './Components/Form.js'
 import { ProgressBar } from './Components/ProgressBar.js'
 import { SecretTextInputField } from './Components/SecretTextInputField.js'
 import { ContextData } from './ContextData.js'
 import { EntityDragLayer } from './Controls/Components/EntityDragLayer.js'
+import { AdminAuthProvider, useAdminAuth } from './Hooks/useAdminAuth.js'
 import { TRPCConnectionStatus, useTRPCConnectionStatus } from './Hooks/useTRPCConnectionStatus.js'
 import { MyHeader } from './Layout/Header.js'
 import { MySidebar, SidebarStateProvider } from './Layout/Sidebar.js'
-import { PRIMARY_COLOR } from './Resources/Constants.js'
+import { PRIMARY_COLOR, PRODUCT_FULL_NAME } from './Resources/Constants.js'
 import { MyErrorBoundary } from './Resources/Error.js'
 import { MonacoLoader } from './Resources/MonacoLoader.js'
 import { SortableHysteresis } from './Resources/SortableHysteresis.js'
@@ -80,11 +82,13 @@ export default function App(): React.JSX.Element {
 						<DragDropProvider>
 							<SortableHysteresis />
 							<EntityDragLayer />
-							<AppMain
-								connected={connected && !shouldReload}
-								loadingComplete={loadingComplete}
-								loadingProgress={loadingProgress}
-							/>
+							<AdminAuthProvider>
+								<AppMain
+									connected={connected && !shouldReload}
+									loadingComplete={loadingComplete}
+									loadingProgress={loadingProgress}
+								/>
+							</AdminAuthProvider>
 						</DragDropProvider>
 					</Suspense>
 				</>
@@ -125,14 +129,15 @@ const AppMain = observer(function AppMain({ connected, loadingComplete, loadingP
 	// Once everything has loaded, prune collapse-state keys for controls/connections that no longer exist
 	useEvictDeadCollapseState(loadingComplete)
 
-	const [unlocked, setUnlocked] = useState(false)
+	const { isAdmin, isUnclaimed, logout } = useAdminAuth()
+	const [showLogin, setShowLogin] = useState(false)
 
-	const canLock = !!userConfig.properties?.admin_lockout
-	const setLocked = useCallback(() => {
-		if (canLock) {
-			setUnlocked(false)
-		}
-	}, [canLock])
+	// Logging out drops back to the read-only view, rather than to an unusable locked screen: anyone
+	// who can reach Companion is allowed to watch it and press buttons.
+	const handleLogout = useCallback(() => {
+		setShowLogin(false)
+		void logout()
+	}, [logout])
 
 	// const wizardModal = useRef<WizardModalRef>(null)
 	// const showWizard = useCallback(() => {
@@ -143,41 +148,30 @@ const AppMain = observer(function AppMain({ connected, loadingComplete, loadingP
 	// }, [unlocked])
 
 	const setup_wizard = userConfig.properties?.setup_wizard
-	const setUnlockedInner = useCallback(() => {
-		setUnlocked(true)
-		if (shouldAutoOpenWizard(setup_wizard)) {
+	// The setup wizard only changes configuration, so it is of no use to a viewer
+	useEffect(() => {
+		if (isAdmin && shouldAutoOpenWizard(setup_wizard)) {
 			wizardOpen.set(true)
 		}
-	}, [setup_wizard, wizardOpen])
+	}, [isAdmin, setup_wizard, wizardOpen])
 
-	// If lockout is disabled, then we are logged in
-	const admin_lockout = userConfig.properties && !userConfig.properties?.admin_lockout
-	useEffect(() => {
-		if (admin_lockout) {
-			setUnlocked(true)
-			if (shouldAutoOpenWizard(setup_wizard)) {
-				wizardOpen.set(true)
-			}
-		}
-	}, [admin_lockout, setup_wizard, wizardOpen])
+	const adminTimeout = userConfig.properties?.admin_timeout ?? 0
 
 	return (
 		<div className="c-app">
 			<SidebarStateProvider>
-				{canLock && unlocked && (userConfig.properties?.admin_timeout ?? 0) > 0 ? (
-					<IdleTimerWrapper setLocked={setLocked} timeoutMinutes={userConfig.properties?.admin_timeout} />
-				) : (
-					''
-				)}
+				{isAdmin && adminTimeout > 0 ? <IdleTimerWrapper setLocked={handleLogout} timeoutMinutes={adminTimeout} /> : ''}
 				<MySidebar />
 				<div className="wrapper flex flex-col min-h-screen bg-app-frame-bg">
-					<MyHeader setLocked={setLocked} canLock={canLock && unlocked} />
+					<MyHeader isAdmin={isAdmin} onLogin={isUnclaimed ? null : () => setShowLogin(true)} onLogout={handleLogout} />
 					<div className="body grow">
 						{connected && loadingComplete ? (
-							!canLock || unlocked ? (
-								<AppContent />
+							isUnclaimed ? (
+								<AppFirstRunSetup />
+							) : showLogin && !isAdmin ? (
+								<AppAuthWrapper cancel={() => setShowLogin(false)} />
 							) : (
-								<AppAuthWrapper setUnlocked={setUnlockedInner} />
+								<AppContent />
 							)
 						) : (
 							<AppLoading progress={loadingProgress} connected={connected} />
@@ -295,40 +289,42 @@ function AppLoading({ progress, connected }: AppLoadingProps) {
 	)
 }
 
-interface AppAuthWrapperProps {
-	setUnlocked: () => void
-}
-
-const AppAuthWrapper = observer(function AppAuthWrapper({ setUnlocked }: AppAuthWrapperProps) {
-	const { userConfig } = useContext(RootAppStoreContext)
+/**
+ * First-run setup: choose the admin password on a Companion that has never had one.
+ *
+ * There is no default password anywhere in the source - a shipped credential would be a published
+ * one - so a fresh install is "unclaimed" and the first client to reach it takes ownership here.
+ * Setting the password also logs this client in, so setup continues straight into the wizard.
+ */
+const AppFirstRunSetup = observer(function AppFirstRunSetup() {
+	const { claim } = useAdminAuth()
 
 	const [password, setPassword] = useState('')
-	const [showError, setShowError] = useState(false)
+	const [confirm, setConfirm] = useState('')
+	const [errorMessage, setErrorMessage] = useState<string | null>(null)
+	const [busy, setBusy] = useState(false)
 
-	const passwordChanged = useCallback((newValue: string) => {
-		setPassword(newValue)
-		setShowError(false)
-	}, [])
+	const tooShort = password.length > 0 && password.length < ADMIN_PASSWORD_MIN_LENGTH
+	const mismatch = confirm.length > 0 && confirm !== password
+	const canSubmit = password.length >= ADMIN_PASSWORD_MIN_LENGTH && confirm === password && !busy
 
-	const tryLogin = useCallback(
+	const doClaim = useCallback(
 		(e: React.FormEvent<HTMLFormElement>) => {
 			e.preventDefault()
+			if (!canSubmit) return false
 
-			setPassword((currentPassword) => {
-				if (currentPassword === userConfig.properties?.admin_password) {
-					setShowError(false)
-					setUnlocked()
-					return ''
-				} else {
-					setShowError(true)
-					// preserve current entered value
-					return currentPassword
-				}
-			})
+			setBusy(true)
+			claim(password)
+				.then((result) => {
+					// A success reloads the page, so there is nothing to do here but report failure
+					if (!result.success) setErrorMessage(result.message ?? 'Could not set the password')
+				})
+				.catch(() => setErrorMessage('Could not reach Companion'))
+				.finally(() => setBusy(false))
 
 			return false
 		},
-		[userConfig, setUnlocked]
+		[canSubmit, claim, password]
 	)
 
 	return (
@@ -336,21 +332,118 @@ const AppAuthWrapper = observer(function AppAuthWrapper({ setUnlocked }: AppAuth
 			<Grid.Row>
 				<Grid.Col xxl={4} md={3} sm={2} xs={1}></Grid.Col>
 				<Grid.Col xxl={4} md={6} sm={8} xs={10}>
-					<h3>Companion is locked</h3>
+					<h3>Set up Companion</h3>
+					<p className="text-muted">
+						This Companion has no admin password yet. Choose one now - until you do, anyone who can reach this page can
+						set it. Viewing and pressing buttons will not need a login; changing the configuration will.
+					</p>
+					<Form onSubmit={doClaim}>
+						<FormLabel htmlFor="first-run-password">New password</FormLabel>
+						<SecretTextInputField
+							id="first-run-password"
+							value={password}
+							setValue={(v) => {
+								setPassword(v)
+								setErrorMessage(null)
+							}}
+							checkValid={tooShort ? false : undefined}
+							immediateValue
+						/>
+						<FormLabel htmlFor="first-run-confirm">Confirm password</FormLabel>
+						<SecretTextInputField
+							id="first-run-confirm"
+							value={confirm}
+							setValue={(v) => {
+								setConfirm(v)
+								setErrorMessage(null)
+							}}
+							checkValid={mismatch ? false : undefined}
+							immediateValue
+						/>
+						<Button type="submit" color="primary" disabled={!canSubmit} className="mt-2">
+							Set password
+						</Button>
+					</Form>
+					{tooShort ? (
+						<p className="text-muted mt-2">Must be at least {ADMIN_PASSWORD_MIN_LENGTH} characters.</p>
+					) : null}
+					{mismatch ? <p className="text-danger mt-2">The passwords do not match.</p> : null}
+					{errorMessage ? <p className="text-danger mt-2">{errorMessage}</p> : null}
+				</Grid.Col>
+			</Grid.Row>
+		</Grid.Container>
+	)
+})
+
+interface AppAuthWrapperProps {
+	cancel: () => void
+}
+
+/**
+ * The admin login form.
+ *
+ * Note that unlike the lock screen this replaces, the password is never compared here - it is posted
+ * to Companion, which holds only a salted hash of it. The old screen compared the password in the
+ * browser against a copy broadcast to every client, so it protected nothing.
+ */
+const AppAuthWrapper = observer(function AppAuthWrapper({ cancel }: AppAuthWrapperProps) {
+	const { login } = useAdminAuth()
+
+	const [password, setPassword] = useState('')
+	const [errorMessage, setErrorMessage] = useState<string | null>(null)
+	const [busy, setBusy] = useState(false)
+
+	const passwordChanged = useCallback((newValue: string) => {
+		setPassword(newValue)
+		setErrorMessage(null)
+	}, [])
+
+	const tryLogin = useCallback(
+		(e: React.FormEvent<HTMLFormElement>) => {
+			e.preventDefault()
+			setBusy(true)
+
+			login(password)
+				.then((result) => {
+					// A successful login reloads the page, so there is nothing to do here but report failure
+					if (!result.success) setErrorMessage(result.message ?? 'Login failed')
+				})
+				.catch(() => setErrorMessage('Could not reach Companion'))
+				.finally(() => setBusy(false))
+
+			return false
+		},
+		[login, password]
+	)
+
+	return (
+		<Grid.Container className="fadeIn loading">
+			<Grid.Row>
+				<Grid.Col xxl={4} md={3} sm={2} xs={1}></Grid.Col>
+				<Grid.Col xxl={4} md={6} sm={8} xs={10}>
+					<h3>Admin login</h3>
+					<p className="text-muted">
+						Companion is read-only until you log in. Viewing the configuration and pressing buttons do not need a login
+						- changing the configuration does.
+					</p>
 					<Form onSubmit={tryLogin}>
 						<InputGroup>
 							<SecretTextInputField
 								id={undefined}
 								value={password}
 								setValue={passwordChanged}
-								checkValid={showError ? false : undefined}
+								checkValid={errorMessage ? false : undefined}
 								immediateValue
 							/>
-							<Button type="submit" color="primary">
-								Unlock
+							<Button type="submit" color="primary" disabled={busy}>
+								Log in
+							</Button>
+							<Button type="button" color="secondary" onClick={cancel} disabled={busy}>
+								Cancel
 							</Button>
 						</InputGroup>
 					</Form>
+					{errorMessage ? <p className="text-danger mt-2">{errorMessage}</p> : null}
 				</Grid.Col>
 			</Grid.Row>
 		</Grid.Container>
@@ -363,8 +456,8 @@ const AppContent = observer(function AppContent() {
 	useEffect(() => {
 		document.title =
 			userConfig.properties?.installName && userConfig.properties?.installName.length > 0
-				? `${userConfig.properties?.installName} - Admin (Bitfocus Companion)`
-				: 'Bitfocus Companion - Admin'
+				? `${userConfig.properties?.installName} - Admin (${PRODUCT_FULL_NAME})`
+				: `${PRODUCT_FULL_NAME} - Admin`
 	}, [userConfig.properties?.installName])
 
 	return (

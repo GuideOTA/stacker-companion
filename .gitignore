@@ -1,4 +1,8 @@
-BUILD
+# Anchored: the generated version file lives at the repo root. Unanchored, this also matches any
+# directory named "build" - and on a case-insensitive filesystem (macOS) that includes tools/build,
+# which made `git add tools/build` fail and broke the pre-commit hook. dist/BUILD is covered by the
+# "dist" rule below.
+/BUILD
 SENTRY
 .DS_Store
 *-x64/*

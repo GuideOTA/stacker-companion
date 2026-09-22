@@ -3,7 +3,6 @@ import type { ResolvedButtonGraphicsDecoration } from './StyleModel.js'
 
 export type UserConfigModel = {
 	setup_wizard: number
-	detailed_data_collection: boolean
 
 	page_direction_flipped: boolean
 	page_plusminus: boolean
@@ -70,6 +69,18 @@ export type UserConfigModel = {
 	gridSizePromptGrow: boolean
 
 	installName: string
+
+	/**
+	 * The station's call letters (e.g. "KJRH"). Shown in the header so it is obvious at a glance which
+	 * station an instance belongs to, and substituted into the bundled starter config when it is
+	 * applied. Empty until set during first-run setup.
+	 */
+	stationCallLetters: string
+	/**
+	 * Set on a fresh install when a starter config is bundled but has not been applied yet, because it
+	 * is waiting on the call letters from the setup wizard. Cleared once it has been applied.
+	 */
+	starterConfigPending: boolean
 	mdns_announcements_enabled: boolean
 	default_export_filename: string
 	default_export_format: ExportFormat

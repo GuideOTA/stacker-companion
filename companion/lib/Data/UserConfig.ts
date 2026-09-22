@@ -31,6 +31,16 @@ export interface DataUserConfigEvents {
  * Individual Contributor License Agreement for Companion along with
  * this program.
  */
+/**
+ * User config keys that must never reach a client.
+ *
+ * `admin_password` is the legacy plaintext admin password. It used to be broadcast to every browser,
+ * because the old lock compared it client-side - which meant the password was readable by anyone who
+ * could open the UI. Authentication is now server-side (see `UI/Auth/`), and this list makes sure the
+ * legacy value cannot leak out of an upgraded config.
+ */
+const CLIENT_REDACTED_KEYS: ReadonlySet<string> = new Set(['admin_password'])
+
 export class DataUserConfig extends EventEmitter<DataUserConfigEvents> {
 	readonly #logger = LogController.createLogger('Data/UserConfig')
 
@@ -49,7 +59,6 @@ export class DataUserConfig extends EventEmitter<DataUserConfigEvents> {
 	 */
 	static Defaults: UserConfigModel = {
 		setup_wizard: 0,
-		detailed_data_collection: true,
 
 		page_direction_flipped: false,
 		page_plusminus: false,
@@ -121,6 +130,8 @@ export class DataUserConfig extends EventEmitter<DataUserConfigEvents> {
 		gridSizePromptGrow: true,
 
 		installName: '',
+		stationCallLetters: '',
+		starterConfigPending: false,
 		mdns_announcements_enabled: true,
 		default_export_filename: '$(internal:hostname)_$(internal:date_iso)-$(internal:time_h)$(internal:time_m)',
 		default_export_format: ExportFormatDefault,
@@ -215,7 +226,7 @@ export class DataUserConfig extends EventEmitter<DataUserConfigEvents> {
 			}),
 
 			getConfig: publicProcedure.query(() => {
-				return this.#applyOverrides(this.#data)
+				return this.#forClient(this.#data)
 			}),
 
 			getLockedKeys: publicProcedure.query(() => {
@@ -225,9 +236,11 @@ export class DataUserConfig extends EventEmitter<DataUserConfigEvents> {
 			watchConfig: publicProcedure.subscription(async function* ({ signal }) {
 				const changes = toIterable(selfEvents, 'keyChanged', signal)
 
-				yield { type: 'init', config: self.#applyOverrides(self.#data) } satisfies UserConfigUpdate
+				yield { type: 'init', config: self.#forClient(self.#data) } satisfies UserConfigUpdate
 
 				for await (const [key, value] of changes) {
+					if (CLIENT_REDACTED_KEYS.has(key)) continue
+
 					yield { type: 'key', key, value } satisfies UserConfigUpdate
 				}
 			}),
@@ -272,8 +285,6 @@ export class DataUserConfig extends EventEmitter<DataUserConfigEvents> {
 		if (!this.#db.getIsFirstRun()) {
 			// This is an existing db, so setup the ports to match how it used to be
 			const legacy_config: Partial<UserConfigModel> = {
-				detailed_data_collection: true,
-
 				tcp_enabled: true,
 				tcp_listen_port: 51234,
 
@@ -387,6 +398,20 @@ export class DataUserConfig extends EventEmitter<DataUserConfigEvents> {
 	 */
 	getAll(): UserConfigModel {
 		return this.#applyOverrides(structuredClone(this.#data))
+	}
+
+	/**
+	 * The config as a client may see it: overrides applied, secrets blanked. Every path that sends the
+	 * config to the web UI goes through here.
+	 */
+	#forClient(config: UserConfigModel): UserConfigModel {
+		const out = this.#applyOverrides(structuredClone(config))
+
+		for (const key of CLIENT_REDACTED_KEYS) {
+			if (key in out) (out as Record<string, unknown>)[key] = ''
+		}
+
+		return out
 	}
 
 	/**

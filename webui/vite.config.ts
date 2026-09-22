@@ -83,6 +83,13 @@ export default defineConfig(({ mode }) => {
 					xfwd: true, // forward X-Forwarded-For so companion sees the real client ip (not the vite proxy)
 					rewrite: (path) => path.slice(normalizedBase.length),
 				},
+				[`${normalizedBase}/admin-auth`]: {
+					// Admin login/logout. The session cookie it sets is scoped to the host (cookies ignore
+					// port), so the proxied tRPC websocket below picks it up too.
+					target: `http://${upstreamUrl}`,
+					xfwd: true, // forward X-Forwarded-For so companion sees the real client ip (not the vite proxy)
+					rewrite: (path) => path.slice(normalizedBase.length),
+				},
 				[`${normalizedBase}/api`]: {
 					target: `http://${upstreamUrl}`,
 					xfwd: true, // forward X-Forwarded-For so companion sees the real client ip (not the vite proxy)

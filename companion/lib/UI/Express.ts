@@ -19,6 +19,7 @@ import serveZip from 'express-serve-zip'
 import onHeaders from 'on-headers'
 import { isPackaged } from '../Resources/Util.js'
 import { REST_API_BASE_PATH } from '../Service/RestApi/constants.js'
+import { ADMIN_AUTH_BASE_PATH } from './Auth/Constants.js'
 import { isLoopbackHostAllowed } from './Handler.js'
 import { createRewriteMiddleware, getCustomPrefixHeader } from './middleware/rewriteRootUrl.js'
 import { makeIsTrustedProxyAddress, parseTrustedProxies } from './TRPC.js'
@@ -93,6 +94,7 @@ export class UIExpress {
 	#restApiRouter = Express.Router()
 	#legacyApiRouter = Express.Router()
 	#connectionApiRouter = Express.Router()
+	#adminAuthRouter = Express.Router()
 
 	constructor(internalApiRouter: Express.Router, trustedProxies: string | undefined, metricsRouter: Express.Router) {
 		// Configure how the client ip is determined when running behind a reverse proxy.
@@ -138,6 +140,11 @@ export class UIExpress {
 				res.send('Not found')
 			}
 		)
+
+		// Admin login/logout. Deliberately not CORS-enabled: only Companion's own web UI should be able
+		// to read these responses, and the session cookie is SameSite=Lax so a cross-site post cannot
+		// carry it either.
+		this.app.use(ADMIN_AUTH_BASE_PATH, async (r, s, n) => this.#adminAuthRouter(r, s, n))
 
 		// Use the router #connectionApiRouter to add API routes dynamically, this router can be redefined at runtime with setter
 		// CORS is enabled here as this is part of the intentionally cross-origin accessible HTTP api.
@@ -233,6 +240,10 @@ export class UIExpress {
 	/**
 	 * Set a new router as the connectionApiRouter
 	 */
+	set adminAuthRouter(router: Express.Router) {
+		this.#adminAuthRouter = router
+	}
+
 	set connectionApiRouter(router: Express.Router) {
 		this.#connectionApiRouter = router
 	}

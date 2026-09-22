@@ -270,7 +270,6 @@ export async function createTestApp(options: TestAppOptions): Promise<TestApp> {
 			// Don't register a usb hotplug listener (a native handle that would outlive the test)
 			usb_hotplug: false,
 			// Don't report usage statistics
-			detailed_data_collection: false,
 			// Don't announce over mdns
 			mdns_announcements_enabled: false,
 			// Mark the setup wizard as already completed (WIZARD_CURRENT_VERSION in

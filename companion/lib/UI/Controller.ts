@@ -1,5 +1,6 @@
 import type express from 'express'
 import type { AppInfo } from '../Registry.js'
+import type { AdminAuthController } from './Auth/AdminAuthController.js'
 import { UIExpress } from './Express.js'
 import { UIHandler } from './Handler.js'
 import { UIServer } from './Server.js'
@@ -11,10 +12,16 @@ export class UIController {
 	readonly io: UIHandler
 	readonly update: UIUpdate
 
-	constructor(appInfo: AppInfo, internalApiRouter: express.Router, metricsRouter: express.Router) {
+	constructor(
+		appInfo: AppInfo,
+		internalApiRouter: express.Router,
+		metricsRouter: express.Router,
+		adminAuth: AdminAuthController
+	) {
 		this.express = new UIExpress(internalApiRouter, appInfo.options.trustedProxies, metricsRouter)
+		this.express.adminAuthRouter = adminAuth.createExpressRouter()
 		this.server = new UIServer(this.express.app)
-		this.io = new UIHandler(appInfo, this.server)
+		this.io = new UIHandler(appInfo, this.server, adminAuth)
 		this.update = new UIUpdate(appInfo)
 	}
 

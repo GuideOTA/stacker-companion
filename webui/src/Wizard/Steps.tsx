@@ -2,15 +2,15 @@ import type { UserConfigModel } from '@companion-app/shared/Model/UserConfigMode
 import {
 	WIZARD_VERSION_2_2,
 	WIZARD_VERSION_3_4,
-	WIZARD_VERSION_4_2,
 	WIZARD_VERSION_4_3,
 	WIZARD_VERSION_5_0,
+	WIZARD_VERSION_5_1,
 } from './Constants.js'
-import { DataCollectionStep } from './DataCollectionStep.js'
 import { GraphicsStep } from './GraphicsStep.js'
 import { GridStep } from './GridStep.js'
 import { PasswordStep } from './PasswordStep.js'
 import { ServicesStep } from './ServicesStep.js'
+import { StationStep } from './StationStep.js'
 import { SurfacesStep } from './SurfacesStep.js'
 import { TimezoneStep } from './TimezoneStep.js'
 
@@ -42,6 +42,13 @@ export interface WizardStepDef {
  */
 export const WIZARD_CONFIG_STEPS: WizardStepDef[] = [
 	{
+		// First, because the starter config is held back until the call letters identify the station
+		id: 'station',
+		title: 'Station',
+		revisedInVersion: WIZARD_VERSION_5_1,
+		render: ({ config, setValue }) => <StationStep config={config} setValue={setValue} />,
+	},
+	{
 		id: 'surfaces',
 		title: 'Surfaces',
 		revisedInVersion: WIZARD_VERSION_4_3,
@@ -67,12 +74,6 @@ export const WIZARD_CONFIG_STEPS: WizardStepDef[] = [
 		title: 'Services',
 		revisedInVersion: WIZARD_VERSION_2_2,
 		render: ({ config, setValue }) => <ServicesStep config={config} setValue={setValue} />,
-	},
-	{
-		id: 'data-collection',
-		title: 'Usage Stats',
-		revisedInVersion: WIZARD_VERSION_4_2,
-		render: ({ config, setValue }) => <DataCollectionStep config={config} setValue={setValue} />,
 	},
 	{
 		id: 'password',

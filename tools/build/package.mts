@@ -1,4 +1,5 @@
 #!/usr/bin/env zx
+import { spawnSync } from 'node:child_process'
 import path from 'path'
 import electronBuilder from 'electron-builder'
 import { $, argv, fs, glob, usePowerShell } from 'zx'
@@ -48,6 +49,21 @@ if (platformInfo.runtimePlatform === 'linux') {
 	await fs.remove(builtinSurfacesDir)
 	await fs.mkdirp(builtinSurfacesDir)
 	await fs.copy(builtinSurfaceCacheDir, builtinSurfacesDir)
+}
+
+// Ship the vendored connection modules built by dist.mts
+{
+	const builtinConnectionsCacheDir = path.join(import.meta.dirname, '../../.cache/builtin-connections')
+	const builtinConnectionsDir = 'dist/builtin-connections/'
+
+	await fs.remove(builtinConnectionsDir)
+	if (await fs.pathExists(builtinConnectionsCacheDir)) {
+		await fs.mkdirp(builtinConnectionsDir)
+		await fs.copy(builtinConnectionsCacheDir, builtinConnectionsDir)
+		console.log(`Bundled ${(await fs.readdir(builtinConnectionsDir)).length} builtin connection module(s)`)
+	} else {
+		console.log('No builtin connection modules to bundle')
+	}
 }
 
 // Install dependencies
@@ -117,6 +133,19 @@ if (!process.env.SKIP_LAUNCH_CHECK) {
 // 	await $`electron-builder install-app-deps`
 // }
 
+// macOS 26's Icon Composer format (.icon) is compiled by `actool`, which ships only with full Xcode
+// 26+. A machine with just the Command Line Tools has no usable actool, and electron-builder aborts
+// before packaging. Fall back to the classic .icns there: the build is identical apart from the icon
+// appearance, which is not worth a 15GB Xcode install for an internal test build. CI, which has full
+// Xcode, still gets the glass icon.
+const macIconIsGlass =
+	platformInfo.runtimePlatform !== 'darwin' ||
+	spawnSync('xcrun', ['-f', 'actool'], { stdio: 'ignore' }).status === 0
+const macIcon = macIconIsGlass ? 'icon-macos-glass.icon' : 'icon.icns'
+if (!macIconIsGlass) {
+	console.log('actool not available (needs full Xcode 26+) - packaging with the classic icon.icns')
+}
+
 // TODO - make optional from flag
 if (process.env.ELECTRON !== '0') {
 	// Set version of the launcher to match the contents of the BUILD file
@@ -153,7 +182,7 @@ if (process.env.ELECTRON !== '0') {
 				gatekeeperAssess: false,
 				entitlements: 'launcher/entitlements.mac.plist',
 				entitlementsInherit: 'launcher/entitlements.mac.plist',
-				icon: 'icon-macos-glass.icon',
+				icon: macIcon,
 				identity: process.env.CSC_LINK ? undefined : null, // Disable signing when CSC_LINK is not set
 			},
 			win: {

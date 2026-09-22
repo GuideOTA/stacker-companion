@@ -100,10 +100,35 @@
 	color: var(--color-header-text-muted);
 }
 
+/* The station call letters. Deliberately the loudest thing on the bar after the brand: with several
+   stations' Companions open at once, reading the wrong one is an on-air mistake. */
+.station-call-letters {
+	display: inline-block;
+	padding: 0.15em 0.6em;
+	border-radius: 0.35em;
+	background-color: var(--color-station-badge-bg);
+	color: var(--color-station-badge-fg);
+	font-weight: 700;
+	font-size: 1.05rem;
+	letter-spacing: 0.08em;
+	line-height: 1.5;
+}
+
 .header-notification-item {
 	border-radius: 0.5em;
 	margin-left: 1em;
 	background-color: var(--color-header-notification-bg);
+}
+
+/* The notification pill is the only header element with its own dark background, so it runs
+   light-on-dark instead of inheriting the bar's dark-on-chartreuse text. Specificity has to beat the
+   `.header .nav-link:hover`/`:focus` rules above. */
+.header .header-notification-item .nav-link {
+	color: var(--color-header-notification-fg);
+}
+.header .header-notification-item .nav-link:hover,
+.header .header-notification-item .nav-link:focus {
+	color: var(--color-header-notification-hover-fg);
 }
 
 .header-update-icon {
@@ -113,7 +138,7 @@
 .help-menu {
 	/* note: <CDropdownToggle color="primary"...> set a group of color properties. Here we extend or override as needed. */
 	.help-toggle {
-		color: var(--color-header-text); /* Keep toggle white on red header */
+		color: var(--color-on-dark); /* light glyph on the deep-chartreuse toggle button */
 		margin-left: 1em; /* buffer between this and the lock icon */
 		/* the following line makes the focus/hover-highlight a square that is the same size as the notification */
 		padding: 0.2em 0em;

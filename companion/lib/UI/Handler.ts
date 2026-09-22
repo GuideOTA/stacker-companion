@@ -17,6 +17,7 @@ import { nanoid } from 'nanoid'
 import { WebSocketServer } from 'ws'
 import LogController from '../Log/Controller.js'
 import type { AppInfo } from '../Registry.js'
+import type { AdminAuthController } from './Auth/AdminAuthController.js'
 import { createTrpcWsContextFactory, makeIsTrustedProxyAddress, type AppRouter } from './TRPC.js'
 
 /**
@@ -161,6 +162,8 @@ export class UIHandler {
 
 	#http: HttpServer
 
+	readonly #adminAuth: AdminAuthController
+
 	#wss = new WebSocketServer({
 		noServer: true,
 		path: '/trpc',
@@ -175,7 +178,8 @@ export class UIHandler {
 	 */
 	readonly #isTrustedProxyAddress: (address: string | undefined) => boolean
 
-	constructor(appInfo: AppInfo, http: HttpServer) {
+	constructor(appInfo: AppInfo, http: HttpServer, adminAuth: AdminAuthController) {
+		this.#adminAuth = adminAuth
 		this.#appInfo = appInfo
 		this.#http = http
 		this.#isTrustedProxyAddress = makeIsTrustedProxyAddress(appInfo.options.trustedProxies)
@@ -197,7 +201,7 @@ export class UIHandler {
 		const handler = applyWSSHandler({
 			wss: this.#wss as any,
 			router: trpcRouter,
-			createContext: createTrpcWsContextFactory(this.#appInfo.options.trustedProxies),
+			createContext: createTrpcWsContextFactory(this.#appInfo.options.trustedProxies, this.#adminAuth),
 			// Enable heartbeat messages to keep connection open (disabled by default)
 			keepAlive: {
 				enabled: true,

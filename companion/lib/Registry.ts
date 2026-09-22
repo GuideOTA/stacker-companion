@@ -16,10 +16,10 @@ import { DataController } from './Data/Controller.js'
 import { DataDatabase } from './Data/Database.js'
 import { DataMetrics, registerCoreMetrics } from './Data/Metrics.js'
 import { registerDatabaseDurationHistogram, registerDatabaseMetrics } from './Data/StoreMetrics.js'
-import { DataUsageStatistics } from './Data/UsageStatistics.js'
 import type { DataUserConfig } from './Data/UserConfig.js'
 import { GraphicsController } from './Graphics/Controller.js'
 import { ImportExportController } from './ImportExport/Controller.js'
+import { hasDefaultConfig } from './ImportExport/DefaultConfig.js'
 import { InstanceController } from './Instance/Controller.js'
 import { InternalController } from './Internal/Controller.js'
 import LogController, { type Logger } from './Log/Controller.js'
@@ -32,6 +32,7 @@ import { ServiceController } from './Service/Controller.js'
 import { ServiceOscSender } from './Service/OscSender.js'
 import { ServiceApi } from './Service/ServiceApi.js'
 import { SurfaceController } from './Surface/Controller.js'
+import { AdminAuthController } from './UI/Auth/AdminAuthController.js'
 import { UIController } from './UI/Controller.js'
 import { createTrpcRouter } from './UI/TRPC.js'
 import { VariablesController } from './Variables/Controller.js'
@@ -139,7 +140,6 @@ export class Registry {
 
 	readonly importExport: ImportExportController
 
-	readonly usageStatistics: DataUsageStatistics
 	readonly metrics: DataMetrics
 
 	readonly #renderClock: RenderClock
@@ -153,6 +153,7 @@ export class Registry {
 	 * The 'ui' controller
 	 */
 	readonly ui: UIController
+	readonly adminAuth: AdminAuthController
 
 	/**
 	 * Express Router for /int api endpoints
@@ -219,7 +220,11 @@ export class Registry {
 		this.#data = new DataController(this.#appInfo, this.db, databaseObserverFor('cache'))
 		this.userconfig = this.#data.userconfig
 
-		this.ui = new UIController(this.#appInfo, this.#internalApiRouter, this.metrics.metricsRouter)
+		// Built before the UI so the websocket tRPC context and the login endpoints share one instance.
+		// The idle timeout is read through a callback so a change in the settings applies to live sessions.
+		this.adminAuth = new AdminAuthController(this.db, () => Number(this.userconfig.getKey('admin_timeout')) || 0)
+
+		this.ui = new UIController(this.#appInfo, this.#internalApiRouter, this.metrics.metricsRouter, this.adminAuth)
 
 		const activeLearningStore = new ActiveLearningStore()
 		const pageStore = new PageStore(this.db.getTableView('pages'))
@@ -351,18 +356,6 @@ export class Registry {
 			this
 		)
 		this.cloud = new CloudController(this.#appInfo, this.db, this.#data.cache, controlStore, this.graphics, pageStore)
-		this.usageStatistics = new DataUsageStatistics(
-			this.#appInfo,
-			this.surfaces,
-			this.instance,
-			this.page,
-			this.controls,
-			this.graphics,
-			this.variables,
-			this.cloud,
-			this.services,
-			this.userconfig
-		)
 		registerCoreMetrics(this.metrics, {
 			instance: this.instance,
 			surfaces: this.surfaces,
@@ -390,7 +383,6 @@ export class Registry {
 				this.graphics.updateUserConfig(key, value)
 				this.services.updateUserConfig(key, value)
 				this.surfaces.updateUserConfig(key, value)
-				this.usageStatistics.updateUserConfig(key, value)
 			})
 
 			if (checkControlsInBounds) {
@@ -481,11 +473,24 @@ export class Registry {
 		this.#logger.debug('launching core modules')
 
 		try {
-			// old 'modules_loaded' events
-			this.usageStatistics.startStopCycle()
 			this.ui.update.startCycle()
 
 			this.controls.init()
+
+			// A fresh install is provisioned from the bundled starter config, if this build ships one. It
+			// is rewritten for the station it is being installed at, so it waits for the call letters from
+			// the setup wizard - on a truly fresh boot this only records that one is pending. Applied
+			// before the fixups below so they run over the imported data, and before the connections are
+			// started so those come up as part of normal startup rather than needing a restart.
+			const isFirstRun = this.db.getIsFirstRun()
+			if (isFirstRun && (await hasDefaultConfig())) {
+				this.userconfig.setKey('starterConfigPending', true)
+			}
+
+			let starterConfigApplied = false
+			if (this.userconfig.getKey('starterConfigPending')) {
+				starterConfigApplied = await this.importExport.applyDefaultConfig(bindIp)
+			}
 
 			// Ensure every page has its `page:<pageId>` control (creates missing ones for older configs)
 			this.page.ensurePageControlsExist()
@@ -499,7 +504,13 @@ export class Registry {
 			this.graphics.triggerRegenerateAll()
 
 			// We are ready to start the instances/connections
-			await this.instance.initInstances(this.db.getIsFirstRun(), extraModulePath)
+			await this.instance.initInstances(isFirstRun, extraModulePath)
+
+			// The starter config's connections reference modules this machine has never had, so pull them
+			// in now that the module manager is initialised. Missing ones download in the background.
+			if (starterConfigApplied) {
+				this.instance.userModulesManager.ensureAllConfiguredModulesInstalled(null)
+			}
 
 			// Instances are loaded, start up http
 			const router = createTrpcRouter(this)
@@ -572,9 +583,9 @@ export class Registry {
 
 		this.services.close()
 		this.cloud.stop()
-		this.usageStatistics.stop()
 
 		this.ui.close()
+		this.adminAuth.destroy()
 
 		// Save the db to disk
 		this.db.close()
@@ -633,7 +644,6 @@ export class Registry {
 		this.userconfig.updateBindIp(bindIp)
 		this.services.https.updateBindIp(bindIp)
 		this.internalModule.updateBindIp(bindIp, bindPort)
-		this.usageStatistics.updateBindIp(bindIp)
 		this.ui.server.rebindHttp(bindIp, bindPort)
 	}
 }

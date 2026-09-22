@@ -166,6 +166,22 @@ export class InstanceInstalledModulesManager {
 		}
 	}
 
+	/**
+	 * Ensure every configured instance of `moduleType` (or of every type, when null) has its module
+	 * installed, downloading any that are missing.
+	 *
+	 * Used both by the "install all missing" action and on a fresh install, where the bundled starter
+	 * config brings in connections whose modules this machine has never seen.
+	 */
+	ensureAllConfiguredModulesInstalled(moduleType: ModuleInstanceType | null): void {
+		for (const instanceId of this.#configStore.getAllInstanceIdsOfType(moduleType)) {
+			const config = this.#configStore.getConfigOfTypeForId(instanceId, moduleType)
+			if (!config) continue
+
+			this.ensureModuleIsInstalled(config.moduleInstanceType, config.moduleId, config.moduleVersionId)
+		}
+	}
+
 	#modulesBeingInstalled = new Set<string>()
 	ensureModuleIsInstalled(moduleType: ModuleInstanceType, moduleId: string, versionId: string | null): void {
 		this.#logger.debug(`Ensuring module "${moduleId}" is installed`)
@@ -235,12 +251,7 @@ export class InstanceInstalledModulesManager {
 				.mutation(async ({ input }) => {
 					this.#logger.debug('modules:install-all-missing')
 
-					for (const connectionId of this.#configStore.getAllInstanceIdsOfType(input.moduleType)) {
-						const config = this.#configStore.getConfigOfTypeForId(connectionId, input.moduleType)
-						if (!config) continue
-
-						this.ensureModuleIsInstalled(config.moduleInstanceType, config.moduleId, config.moduleVersionId)
-					}
+					this.ensureAllConfiguredModulesInstalled(input.moduleType)
 				}),
 
 			installModuleTar: publicProcedure

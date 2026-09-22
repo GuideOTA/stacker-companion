@@ -85,11 +85,12 @@ if (process.env.COMPANION_SKIP_BUILTIN_SURFACE_MODULES) {
 	await fetchBuiltinSurfaceModules()
 }
 
-console.log('Ensuring bundled modules are synced')
-
-await $`git submodule init`
-await $`git submodule sync`
-await $`git submodule update`
+// Build the connection modules vendored under `bundled-modules/` into .cache/builtin-connections, where the
+// backend loads them from. Incremental: an unchanged module is skipped, so this is cheap on restart.
+console.log('Ensuring bundled connection modules are built')
+await $`tsx ${path.join(import.meta.dirname, 'build_bundled_modules.mts')}`.catch((e) => {
+	console.error('Failed to build bundled connection modules:', e)
+})
 
 // The backend and shared-lib run directly from their TypeScript sources via tsx (below), so there
 // is no `tsc` emit to perform first. Only the webui needs a build up-front, since the backend

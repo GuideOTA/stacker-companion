@@ -4,7 +4,6 @@ import { Table } from '~/Components/Table.js'
 import { SplitPanels } from '~/Layout/SplitPanels.js'
 import { useUserConfigProps } from './Context.js'
 import { CompanionConfig } from './Sections/CompanionConfig.js'
-import { DataCollectionConfig } from './Sections/DataCollection.js'
 
 export const SettingsGeneralPage = memo(function UserConfig() {
 	return (
@@ -40,9 +39,7 @@ const UserConfigTable = observer(function UserConfigTable() {
 				</tbody>
 			</Table>
 			<Table className="table-settings">
-				<tbody>
-					<DataCollectionConfig {...userConfigProps} />
-				</tbody>
+				<tbody></tbody>
 			</Table>
 		</>
 	)

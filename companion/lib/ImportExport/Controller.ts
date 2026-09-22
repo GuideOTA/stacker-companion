@@ -10,6 +10,7 @@
  */
 
 import { EventEmitter } from 'node:events'
+import zlib from 'node:zlib'
 import type express from 'express'
 import { nanoid } from 'nanoid'
 import workerPool from 'workerpool'
@@ -56,6 +57,13 @@ import { publicProcedure, router, toIterable, type TrpcContext } from '../UI/TRP
 import type { VariablesController } from '../Variables/Controller.js'
 import { BackupController } from './Backups.js'
 import { FILE_VERSION, MAX_IMPORT_FILE_SIZE } from './Constants.js'
+import {
+	DEFAULT_CONFIG_IMPORT_SELECTION,
+	detectNetworkPrefix,
+	hasDefaultConfig,
+	readDefaultConfig,
+	substituteStarterConfig,
+} from './DefaultConfig.js'
 import { ExportController } from './Export.js'
 import { ImportController } from './Import.js'
 import { parseImportBuffer, type ParseImportResult } from './ParseImport.js'
@@ -319,6 +327,67 @@ export class ImportExportController {
 		this.#taskEvents.emit('taskChange', this.#currentImportTask)
 	}
 
+	/**
+	 * Apply the bundled starter config, if this build ships one and the station is identified.
+	 *
+	 * Held back until `stationCallLetters` is set, because the config is rewritten for the station it
+	 * is being installed at - its call letters and its network prefix are substituted in. That value
+	 * comes from the setup wizard, which cannot run before the admin password exists, so on a fresh
+	 * install this no-ops at boot and runs again once the wizard has been through.
+	 *
+	 * It goes through exactly the same parse/upgrade/import path as a config a user uploads, so a
+	 * starter file exported from an older Companion is migrated the same way theirs would be.
+	 *
+	 * A failure here is logged and swallowed: a broken starter config must leave an empty but working
+	 * Companion, never a boot loop.
+	 */
+	async applyDefaultConfig(bindIp: string | null): Promise<boolean> {
+		if (!(await hasDefaultConfig())) {
+			this.#logger.debug('No bundled default config to apply')
+			return false
+		}
+
+		const callLetters = String(this.#userConfigController.getKey('stationCallLetters') || '').trim()
+		if (!callLetters) {
+			this.#logger.info('Holding the bundled starter config until the station call letters are set')
+			return false
+		}
+
+		try {
+			// Substitute on the raw JSON text: these values appear inside nested action options, expression
+			// strings, surface ids and labels, not just in tidy config fields.
+			const rawJson = zlib.gunzipSync(await readDefaultConfig()).toString('utf8')
+			const networkPrefix = detectNetworkPrefix(bindIp)
+			const result = substituteStarterConfig(rawJson, { networkPrefix, callLetters })
+
+			this.#logger.info(
+				`Preparing starter config for ${callLetters}: ` +
+					`${result.replacedCallLetters} call-letter reference(s), ` +
+					`${result.replacedAddresses} address(es) rebased from ${result.fromPrefix ?? '?'} to ${networkPrefix ?? '(unchanged)'}`
+			)
+
+			const parsed = await parseImportBuffer(Buffer.from(result.json, 'utf8'), this.#parseYamlInWorker)
+			if (parsed.error || !parsed.data) {
+				throw new Error(parsed.error ?? 'could not be parsed')
+			}
+
+			const data = upgradeImport(parsed.data, this.#userConfigController.getAll())
+			if (data.type !== 'full') {
+				throw new Error(`expected a full export, got "${data.type}"`)
+			}
+
+			this.#logger.info('Applying the bundled starter config')
+			await this.#importController.importFull(data, DEFAULT_CONFIG_IMPORT_SELECTION)
+			this.#userConfigController.setKey('starterConfigPending', false)
+			this.#logger.info('Starter config applied')
+
+			return true
+		} catch (e) {
+			this.#logger.error(`Failed to apply the bundled starter config, continuing with an empty one: ${e}`)
+			return false
+		}
+	}
+
 	async #checkOrRunImportTask<T>(newTaskType: ImportExportTaskType, executeFn: () => Promise<T>): Promise<T> {
 		const runId = this.#beginTask(newTaskType)
 
@@ -375,6 +444,17 @@ export class ImportExportController {
 			abort: publicProcedure.mutation(async ({ ctx }) => {
 				// Clear the pending import
 				delete ctx.pendingImport
+			}),
+
+			// Applies the starter config that has been waiting on the call letters. A mutation, so it is
+			// admin-gated like every other configuration change.
+			applyStarterConfig: publicProcedure.mutation(async () => {
+				const applied = await this.applyDefaultConfig(null)
+				if (applied) {
+					// The starter config's connections reference modules this machine may never have had
+					this.#instancesController.userModulesManager.ensureAllConfiguredModulesInstalled(null)
+				}
+				return { applied }
 			}),
 
 			resetConfiguration: publicProcedure

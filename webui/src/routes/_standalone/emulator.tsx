@@ -4,6 +4,7 @@ import { useCallback } from 'react'
 import { useDocumentTitle } from 'usehooks-ts'
 import { StandalonePageError } from '~/Components/StandalonePageError'
 import { TRPCConnectionStatus, useTRPCConnectionStatus } from '~/Hooks/useTRPCConnectionStatus'
+import { PRODUCT_FULL_NAME } from '~/Resources/Constants.js'
 import { trpc } from '~/Resources/TRPC'
 
 export const Route = createFileRoute('/_standalone/emulator')({
@@ -17,8 +18,8 @@ function RouteComponent() {
 
 	useDocumentTitle(
 		emulatorPageConfig.data?.installName && emulatorPageConfig.data.installName.length > 0
-			? `${emulatorPageConfig.data.installName} - Emulator (Bitfocus Companion)`
-			: 'Bitfocus Companion - Emulator'
+			? `${emulatorPageConfig.data.installName} - Emulator (${PRODUCT_FULL_NAME})`
+			: `${PRODUCT_FULL_NAME} - Emulator`
 	)
 
 	const doRetry = useCallback(() => window.location.reload(), [])

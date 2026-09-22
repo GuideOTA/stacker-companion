@@ -102,6 +102,7 @@ export const WizardModal = observer(function WizardModal(): React.JSX.Element {
 
 	const setConfigKeyMutation = useMutationExt(trpc.userConfig.setConfigKey.mutationOptions())
 	const setConfigKeysMutation = useMutationExt(trpc.userConfig.setConfigKeys.mutationOptions())
+	const applyStarterConfigMutation = useMutationExt(trpc.importExport.applyStarterConfig.mutationOptions())
 
 	// Closing the wizard - whether by finishing it or dismissing it - records that it has been run, so it isn't
 	// re-shown on every load. Guard on `startConfig` so a modal that never managed to load its config (and would
@@ -148,6 +149,17 @@ export const WizardModal = observer(function WizardModal(): React.JSX.Element {
 					onSuccess: () => {
 						setError(null)
 						setOldConfig(newConfig)
+
+						// The bundled starter config is held back until the call letters identify the station.
+						// Now that they are saved, release it. A failure here must not block finishing the
+						// wizard - the settings are already stored, and it can be retried from Import/Export.
+						if (newConfig.starterConfigPending && newConfig.stationCallLetters) {
+							applyStarterConfigMutation.mutate(undefined, {
+								onError: (e) =>
+									setError(`Settings saved, but the starter config failed to apply: ${stringifyError(e)}`),
+							})
+						}
+
 						doNextStep()
 					},
 					onError: (e) => {
@@ -156,7 +168,7 @@ export const WizardModal = observer(function WizardModal(): React.JSX.Element {
 				}
 			)
 		},
-		[setConfigKeysMutation, newConfig, oldConfig, doNextStep]
+		[setConfigKeysMutation, applyStarterConfigMutation, newConfig, oldConfig, doNextStep]
 	)
 
 	const setValue = (key: keyof UserConfigModel, value: any) => {

@@ -80,9 +80,9 @@ export interface MetricsRegistry {
  * Hosts a Prometheus-compatible metrics endpoint (`/api/metrics`) for operational observability, and
  * acts as the registry that subsystems register their own metrics against (see MetricsRegistry).
  *
- * Unlike DataUsageStatistics (which pushes an anonymised snapshot home once an hour), this is a
- * pull-based local endpoint: metrics read live values at scrape time via `collect()` callbacks, so
- * there are no background timers. Process memory (rss/heap/external/arrayBuffers), GC and event-loop
+ * This is a pull-based local endpoint and nothing leaves the machine: metrics read live values at
+ * scrape time via `collect()` callbacks, so there are no background timers. (This fork removed
+ * upstream's DataUsageStatistics, which pushed an anonymised snapshot home once an hour.) Process memory (rss/heap/external/arrayBuffers), GC and event-loop
  * lag come from prom-client's default collectors - passively, without forcing GC.
  */
 export class DataMetrics implements MetricsRegistry {

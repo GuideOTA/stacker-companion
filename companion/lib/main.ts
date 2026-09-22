@@ -41,7 +41,7 @@ program
 		'Use the specified directory for storing configuration. The default path varies by system, and is different to 2.2 (the old path will be used if existing config is found)'
 	)
 	.option('--machine-id <string>', 'Unique id for this installation')
-	.option('--disable-admin-password', 'Disables password lockout for the admin UI')
+	.option('--reset-admin-password', 'Clears the admin password, so a new one can be set from the web UI')
 
 // Register the config-tool-managed options from the shared single-source-of-truth list. This
 // keeps the flags the server accepts in sync with what the `config-tool` package generates.
@@ -237,7 +237,12 @@ program.command('start', { isDefault: true, hidden: true }).action(() => {
 				[ModuleInstanceType.Surface]: path.join(rootConfigDir, 'surfaces'),
 			},
 			builtinModuleDirs: {
-				[ModuleInstanceType.Connection]: null,
+				// Connection modules vendored into this repo under `bundled-modules/`, built by
+				// `yarn build:bundled-modules`. They ship with Companion rather than being downloaded from
+				// the module store, so they can be edited here and cannot be uninstalled.
+				[ModuleInstanceType.Connection]: isPackaged()
+					? path.join(import.meta.dirname, 'builtin-connections')
+					: path.join(import.meta.dirname, '../../.cache/builtin-connections'),
 				[ModuleInstanceType.Surface]: isPackaged()
 					? path.join(import.meta.dirname, 'builtin-surfaces')
 					: path.join(import.meta.dirname, '../../.cache/builtin-surfaces'),
@@ -262,8 +267,9 @@ program.command('start', { isDefault: true, hidden: true }).action(() => {
 		.then(() => {
 			console.log('Started')
 
-			if (options.disableAdminPassword || process.env.DISABLE_ADMIN_PASSWORD) {
-				registry.userconfig.setKey('admin_lockout', false)
+			if (options.resetAdminPassword || process.env.RESET_ADMIN_PASSWORD) {
+				// Recovery only - the admin login itself cannot be turned off
+				registry.adminAuth.resetPassword()
 			}
 		})
 		.catch((e) => {

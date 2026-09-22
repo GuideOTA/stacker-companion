@@ -65,7 +65,7 @@ describe('presentation metadata', () => {
 
 	it('does not manage server-only options (machineId, configDir, etc.)', () => {
 		const keys = LAUNCH_OPTIONS.map((o) => o.key)
-		for (const serverOnly of ['machineId', 'configDir', 'listInterfaces', 'disableAdminPassword']) {
+		for (const serverOnly of ['machineId', 'configDir', 'listInterfaces', 'resetAdminPassword']) {
 			expect(keys, serverOnly).not.toContain(serverOnly)
 			expect(PRESENTATION[serverOnly]).toBeUndefined()
 		}

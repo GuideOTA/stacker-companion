@@ -7,6 +7,7 @@ import {
 	faExternalLinkSquare,
 	faInfo,
 	faLock,
+	faLockOpen,
 	faStar,
 	faTriangleExclamation,
 } from '@fortawesome/free-solid-svg-icons'
@@ -20,6 +21,7 @@ import { Button } from '~/Components/Button.js'
 import { Grid } from '~/Components/Grid'
 import { Popover } from '~/Components/Popover.js'
 import { MenuSeparator } from '~/Components/useContextMenuProps.js'
+import { PRODUCT_NAME, PRODUCT_VENDOR } from '~/Resources/Constants.js'
 import { makeAbsolutePath } from '~/Resources/util.js'
 import { RootAppStoreContext } from '~/Stores/RootAppStore.js'
 import { trpc } from '../Resources/TRPC.js'
@@ -27,8 +29,11 @@ import { useSidebarState } from './Sidebar.js'
 import { useCompanionVersion } from './useCompanionVersion.js'
 
 interface MyHeaderProps {
-	canLock: boolean
-	setLocked: (locked: boolean) => void
+	/** Whether this client holds an admin session, and so may change the configuration. */
+	isAdmin: boolean
+	/** Null while Companion is unclaimed - there is no password to log in with yet. */
+	onLogin: (() => void) | null
+	onLogout: () => void
 }
 
 // make our own circleInfo since it's not in the free FontAwesome offering (two options here)
@@ -58,8 +63,9 @@ function circleInfo(stacked = false): ReactElement {
 	}
 }
 
-export const MyHeader = observer(function MyHeader({ canLock, setLocked }: MyHeaderProps) {
+export const MyHeader = observer(function MyHeader({ isAdmin, onLogin, onLogout }: MyHeaderProps) {
 	const { userConfig } = useContext(RootAppStoreContext)
+	const callLetters = String(userConfig.properties?.stationCallLetters ?? '').trim()
 
 	const { mobileMode, handleShowSidebar } = useSidebarState()
 
@@ -78,10 +84,20 @@ export const MyHeader = observer(function MyHeader({ canLock, setLocked }: MyHea
 				)}
 
 				<a className="header-brand mx-auto md:hidden">
-					Bitfocus&nbsp;<span className="font-bold">Companion</span>
+					{callLetters ? <span className="station-call-letters me-2">{callLetters}</span> : null}
+					{PRODUCT_VENDOR}&nbsp;<span className="font-bold">{PRODUCT_NAME}</span>
 				</a>
 
 				<HeaderNav className="hidden md:flex me-auto">
+					{/* Which station's Companion this is - the first thing to read when several are open at once */}
+					{callLetters ? (
+						<li className="nav-item">
+							<span className="station-call-letters" title="Station call letters">
+								{callLetters}
+							</span>
+						</li>
+					) : null}
+
 					{userConfig.properties?.installName && userConfig.properties?.installName.length > 0 && (
 						<li className="nav-item install-name">{userConfig.properties?.installName}</li>
 					)}
@@ -117,11 +133,15 @@ export const MyHeader = observer(function MyHeader({ canLock, setLocked }: MyHea
 				</HeaderNav>
 
 				<HeaderNav className="header-right">
-					{canLock && (
-						<Button color="primary" className="help-toggle" onClick={() => setLocked(true)} title="Lock Admin UI">
+					{isAdmin ? (
+						<Button color="primary" className="help-toggle" onClick={onLogout} title="Log out of the admin session">
+							<FontAwesomeIcon icon={faLockOpen} className="fa-lg" />
+						</Button>
+					) : onLogin ? (
+						<Button color="primary" className="help-toggle" onClick={onLogin} title="Log in to change settings">
 							<FontAwesomeIcon icon={faLock} className="fa-lg" />
 						</Button>
-					)}
+					) : null}
 				</HeaderNav>
 				{/* Placing HelpMenu outside CHeaderNav gives "standard" menu line-heights. 
 						Move it into the CHeaderNav block to make it look more like the sidebar line height.  */}

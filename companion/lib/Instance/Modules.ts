@@ -364,8 +364,9 @@ export class InstanceModules {
 		const latest = moduleInfo.getLatestVersion(false)?.versionId
 		if (latest) return latest
 
-		// For surface modules, builtin is also an option
-		if (moduleType === ModuleInstanceType.Surface && moduleInfo.builtinModule) return 'builtin'
+		// A builtin module is also an option - for surfaces, and for the connection modules this fork
+		// vendors into the repo (see bundled-modules/ and builtinModuleDirs in main.ts)
+		if (moduleInfo.builtinModule) return 'builtin'
 
 		return null
 	}

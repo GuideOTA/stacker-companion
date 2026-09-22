@@ -10,10 +10,23 @@ import type { ExportFullv6, ExportPageModelv6 } from '@companion-app/shared/Mode
 import LogController from '../Log/Controller.js'
 import type { Registry } from '../Registry.js'
 import { isPackaged } from '../Resources/Util.js'
+import type { AdminAuthController } from './Auth/AdminAuthController.js'
+import { ADMIN_SESSION_COOKIE, parseCookie } from './Auth/Cookies.js'
+import { isOperateMutation } from './Auth/OperateProcedures.js'
 
 export interface TrpcContext {
 	clientId: string
 	clientIp: string | undefined
+
+	/**
+	 * The admin session token this connection presented, if any. Read once from the cookie when the
+	 * connection is established; its validity is re-checked on every guarded call, so an expired or
+	 * revoked session stops working without the client having to reconnect.
+	 */
+	adminSessionToken: string | undefined
+
+	/** Whether this connection currently holds a valid admin session. */
+	isAdmin: () => boolean
 
 	/**
 	 * Whether this client is connecting from the same machine as Companion.
@@ -62,11 +75,18 @@ export function makeIsTrustedProxyAddress(
 
 // created for each request
 // The express side already resolves req.ip via express's "trust proxy" setting, so we can use it directly.
-export const createTrpcExpressContext = ({ req, res: _res }: trpcExpress.CreateExpressContextOptions): TrpcContext => ({
-	clientId: nanoid(),
-	clientIp: req.ip,
-	isLocalClient: makeIsLocalClient(req.ip),
-}) // no context
+export function createTrpcExpressContextFactory(adminAuth: AdminAuthController) {
+	return ({ req, res: _res }: trpcExpress.CreateExpressContextOptions): TrpcContext => {
+		const adminSessionToken = parseCookie(req.headers.cookie, ADMIN_SESSION_COOKIE)
+		return {
+			clientId: nanoid(),
+			clientIp: req.ip,
+			isLocalClient: makeIsLocalClient(req.ip),
+			adminSessionToken,
+			isAdmin: () => adminAuth.isValidSession(adminSessionToken),
+		}
+	}
+}
 
 /**
  * Build the websocket context creator.
@@ -77,18 +97,23 @@ export const createTrpcExpressContext = ({ req, res: _res }: trpcExpress.CreateE
  * uses. When no trusted proxies are configured, X-Forwarded-For is ignored and the socket address is
  * used (so it can't be spoofed by untrusted clients).
  */
-export function createTrpcWsContextFactory(trustedProxies: string | undefined) {
+export function createTrpcWsContextFactory(trustedProxies: string | undefined, adminAuth: AdminAuthController) {
 	const trustedParts = parseTrustedProxies(trustedProxies)
 	const trust = trustedParts.length > 0 ? proxyaddr.compile(trustedParts) : undefined
 
 	return ({ req, res: _res }: trpcWs.CreateWSSContextFnOptions): TrpcContext => {
 		const clientIp = trust ? proxyaddr(req, trust) : req.socket.remoteAddress
+		// A websocket upgrade carries the browser's cookies like any other same-origin request, so the
+		// session established by the login POST is picked up here when the client reconnects.
+		const adminSessionToken = parseCookie(req.headers.cookie, ADMIN_SESSION_COOKIE)
 		return {
 			clientId: nanoid(),
 			clientIp,
 			isLocalClient: makeIsLocalClient(clientIp),
+			adminSessionToken,
+			isAdmin: () => adminAuth.isValidSession(adminSessionToken),
 		}
-	} // no context
+	}
 }
 
 /**
@@ -176,8 +201,44 @@ const sentryMiddleware = t.middleware(
  */
 export const router = t.router
 
-export const publicProcedure = t.procedure.use(sentryMiddleware).use(loggerMiddleware).use(tidyZodMiddleware)
-// export const protectedProcedure = t.procedure
+/**
+ * Deny-by-default authorization for every configuration change.
+ *
+ * Companion's web UI is readable by anyone who can reach it - queries and subscriptions are left
+ * open, so an operator can watch the whole system - but a `.mutation` changes state and so requires
+ * an authenticated admin session. The exceptions are the "operate" mutations in
+ * `OperateProcedures.ts`: pressing a button is a mutation too, and an operator running a show must
+ * be able to do that without admin rights.
+ *
+ * This is applied centrally rather than per-procedure on purpose. Every mutation added later - by us
+ * or by an upstream merge - is protected from the moment it exists, with nothing to remember. The
+ * failure mode of forgetting the allowlist is a locked button, not an open door.
+ */
+const adminMutationGuard = t.middleware(async ({ ctx, next, path, type }) => {
+	if (type !== 'mutation' || isOperateMutation(path)) return next()
+
+	if (!ctx.isAdmin()) {
+		throw new TRPCError({
+			code: 'UNAUTHORIZED',
+			message: 'This change requires an admin login',
+		})
+	}
+
+	return next()
+})
+
+/**
+ * The base procedure every router builds on.
+ *
+ * Note that despite the name - kept as upstream's, so the ~40 router files do not have to be touched
+ * and every future upstream merge stays clean - this is only "public" for queries and subscriptions.
+ * Its mutations are admin-gated by `adminMutationGuard` above.
+ */
+export const publicProcedure = t.procedure
+	.use(sentryMiddleware)
+	.use(loggerMiddleware)
+	.use(tidyZodMiddleware)
+	.use(adminMutationGuard)
 
 /**
  * Create the root TRPC router
@@ -186,6 +247,8 @@ export const publicProcedure = t.procedure.use(sentryMiddleware).use(loggerMiddl
  */
 export function createTrpcRouter(registry: Registry) {
 	return router({
+		adminAuth: registry.adminAuth.createTrpcRouter(),
+
 		appInfo: registry.ui.update.createTrpcRouter(),
 
 		bonjour: registry.services.bonjourDiscovery.createTrpcRouter(),
@@ -205,7 +268,6 @@ export function createTrpcRouter(registry: Registry) {
 		userConfig: registry.userconfig.createTrpcRouter(),
 		instances: registry.instance.createTrpcRouter(),
 		cloud: registry.cloud.createTrpcRouter(),
-		usageStatistics: registry.usageStatistics.createTrpcRouter(),
 
 		preview: registry.preview.createTrpcRouter(),
 		imageLibrary: registry.graphics.imageLibrary.createTrpcRouter(),

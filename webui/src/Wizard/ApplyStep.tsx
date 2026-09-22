@@ -3,7 +3,7 @@ import { faCheck, faCircleInfo, faXmark } from '@fortawesome/free-solid-svg-icon
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { UserConfigModel } from '@companion-app/shared/Model/UserConfigModel.js'
 import { TIMEZONE_CHOICES } from '~/Resources/timezones.js'
-import { WIZARD_VERSION_3_0, WIZARD_VERSION_4_2, WIZARD_VERSION_5_0 } from './Constants.js'
+import { WIZARD_VERSION_3_0, WIZARD_VERSION_5_0 } from './Constants.js'
 
 const DECORATION_LABELS: Record<string, string> = {
 	topbar: 'a top bar',
@@ -199,48 +199,15 @@ export function getWizardChanges(oldConfig: UserConfigModel, newConfig: UserConf
 		}
 	}
 
-	category = 'Usage Statistics'
-	if (
-		oldConfig.setup_wizard < WIZARD_VERSION_4_2 ||
-		oldConfig.detailed_data_collection !== newConfig.detailed_data_collection
-	) {
-		add(
-			newConfig.detailed_data_collection ? 'add' : 'remove',
-			newConfig.detailed_data_collection
-				? 'Send anonymous usage statistics.'
-				: 'Anonymous usage statistics will not be sent.'
-		)
-	}
-
 	category = 'Security'
-	if (oldConfig.setup_wizard === 0 || oldConfig.admin_lockout !== newConfig.admin_lockout) {
-		add(
-			'info',
-			newConfig.admin_lockout
-				? `This admin interface will ${oldConfig.setup_wizard > 0 ? 'now ' : ''}be password protected.`
-				: 'This admin interface will not be password protected.'
-		)
-	}
-	if (
-		(oldConfig.setup_wizard === 0 && newConfig.admin_lockout) ||
-		(newConfig.admin_lockout && oldConfig.admin_password !== newConfig.admin_password)
-	) {
-		add(
-			'info',
-			oldConfig.setup_wizard > 0 && oldConfig.admin_password !== '' ? 'Change admin password.' : 'Set admin password.'
-		)
-	}
-	if (
-		(oldConfig.setup_wizard === 0 && newConfig.admin_lockout) ||
-		(newConfig.admin_lockout && oldConfig.admin_timeout !== newConfig.admin_timeout)
-	) {
+	if (oldConfig.setup_wizard === 0 || oldConfig.admin_timeout !== newConfig.admin_timeout) {
 		const oldAdminTimeoutStr = oldConfig.admin_timeout + ''
 		const newAdminTimeoutStr = newConfig.admin_timeout + ''
 		add(
 			'info',
 			oldConfig.setup_wizard > 0
-				? `Change admin GUI timeout from ${oldAdminTimeoutStr === '0' ? 'none' : oldConfig.admin_timeout + ' minutes'} to ${newAdminTimeoutStr === '0' ? 'none' : newConfig.admin_timeout + ' minutes'}.`
-				: `Set admin GUI timeout to ${newAdminTimeoutStr === '0' ? 'none' : newConfig.admin_timeout + ' minutes'}.`
+				? `Change admin session timeout from ${oldAdminTimeoutStr === '0' ? 'none' : oldConfig.admin_timeout + ' minutes'} to ${newAdminTimeoutStr === '0' ? 'none' : newConfig.admin_timeout + ' minutes'}.`
+				: `Set admin session timeout to ${newAdminTimeoutStr === '0' ? 'none' : newConfig.admin_timeout + ' minutes'}.`
 		)
 	}
 

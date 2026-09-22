@@ -13,6 +13,7 @@ import { usePagesInfoSubscription } from '~/Hooks/usePagesInfoSubscription.js'
 import { useWakeLock } from '~/Hooks/useScreenWakeLock.js'
 import { TRPCConnectionStatus, useTRPCConnectionStatus } from '~/Hooks/useTRPCConnectionStatus.js'
 import { useUserConfigSubscription } from '~/Hooks/useUserConfigSubscription.js'
+import { PRODUCT_FULL_NAME } from '~/Resources/Constants.js'
 import { MyErrorBoundary } from '~/Resources/Error.js'
 import { trpc, useMutationExt } from '~/Resources/TRPC.js'
 import { PagesStore } from '~/Stores/PagesStore.js'
@@ -76,8 +77,8 @@ export const TabletView = observer(function TabletView() {
 	useEffect(() => {
 		document.title =
 			userConfigStore.properties?.installName && userConfigStore.properties?.installName.length > 0
-				? `${userConfigStore.properties?.installName} - Web Buttons (Bitfocus Companion)`
-				: 'Bitfocus Companion - Web Buttons'
+				? `${userConfigStore.properties?.installName} - Web Buttons (${PRODUCT_FULL_NAME})`
+				: `${PRODUCT_FULL_NAME} - Web Buttons`
 	}, [userConfigStore.properties?.installName])
 
 	const updateQueryUrl = useCallback(

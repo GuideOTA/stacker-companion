@@ -1,3 +1,4 @@
+import { PRODUCT_FULL_NAME } from '~/Resources/Constants.js'
 import { makeAbsolutePath } from '~/Resources/util.js'
 
 interface EmulatorListHeaderProps {
@@ -9,7 +10,7 @@ export function EmulatorListHeader({ installName }: EmulatorListHeaderProps): Re
 
 	return (
 		<header className="emulator-list-header">
-			<img src={makeAbsolutePath('/img/icons/48x48.png')} alt="Bitfocus Companion" className="emulator-list-logo" />
+			<img src={makeAbsolutePath('/img/icons/48x48.png')} alt={PRODUCT_FULL_NAME} className="emulator-list-logo" />
 			<div className="emulator-list-heading">
 				<h1>{title}</h1>
 				<span className="emulator-list-subheading">Choose an emulator to control</span>

@@ -53,7 +53,7 @@
 	--font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", "Liberation Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
 	--font-mono: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 
-	--color-primary: #d50215;
+	--color-primary: #4a7300;
 	--color-secondary: #ccc;
 	--color-success: #1b9e3e;
 	--color-danger: #e55353;
@@ -189,9 +189,9 @@
 	--color-on-dark-muted: rgba(255, 255, 255, 0.75);
 
 	/* Primary tints */
-	--color-primary-soft: #ea818a;
-	--color-link-hover: rgb(170.4, 1.6, 16.8); /* darkened brand red for a:hover */
-	--color-primary-softer: #f2b3b9;
+	--color-primary-soft: #8cbf4a;
+	--color-link-hover: #3b5c00; /* darkened brand chartreuse for a:hover */
+	--color-primary-softer: #c3e39a;
 	--color-focus-ring: color-mix(in srgb, var(--color-primary) 25%, transparent);
 
 	/* Drop-shadow / dark-tint scale. The alpha for each weight lives here (one place to retune when
@@ -212,12 +212,25 @@
 	--color-tab-bg: #f3f3f3; /* inactive tab background */
 	--color-tab-fg: #555; /* inactive tab text */
 
-	/* Header bar (defaults to the brand primary; can be themed separately) */
-	--color-header-bg: var(--color-primary);
-	--color-header-text: var(--color-on-dark);
-	--color-header-hover: #b70212; /* darkened header bg for the mobile toggler hover */
-	--color-header-text-muted: #ddd; /* dimmed header nav-link on hover/focus */
+	/* Header bar. Themed separately from --color-primary: the bar carries true chartreuse, which is far
+	   too light to sit behind white text (1.3:1), so the header runs dark-on-bright while the rest of
+	   the app runs the deeper brand chartreuse. #111 on #7fff00 is 14.6:1. */
+	--color-header-bg: #7fff00;
+	--color-header-text: #111;
+	--color-header-hover: #6bd900; /* darkened header bg for the mobile toggler hover */
+	--color-header-text-muted: color-mix(
+		in srgb,
+		var(--color-header-text) 65%,
+		var(--color-header-bg)
+	); /* dimmed header nav-link on hover/focus */
+	/* Station call letters badge - a dark plate on the bright bar, so it reads first */
+	--color-station-badge-bg: #111;
+	--color-station-badge-fg: var(--color-on-dark);
+
 	--color-header-notification-bg: #333;
+	--color-header-notification-fg: var(--color-on-dark); /* the pill has its own dark background, so its
+	   text stays light rather than following the bar's dark-on-chartreuse */
+	--color-header-notification-hover-fg: #0ff; /* cyan on hover/focus */
 
 	/* Panel headers & dropdown menus (layout) */
 	--color-panel-header-bg: #dee2e5;

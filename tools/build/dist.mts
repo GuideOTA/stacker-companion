@@ -143,6 +143,11 @@ for (const name of copyPrebuildsFromDependencies) {
 await fs.mkdirp('dist/assets/Fonts')
 await fs.copy(path.join('assets', 'Fonts'), 'dist/assets/Fonts')
 
+// The bundled starter config applied to a fresh install (see ImportExport/DefaultConfig.ts)
+if (await fs.pathExists(path.join('assets', 'default-config'))) {
+	await fs.copy(path.join('assets', 'default-config'), 'dist/assets/default-config')
+}
+
 // Copy Swagger UI browser assets
 await fs.copy(path.join('node_modules', 'swagger-ui-dist'), 'dist/assets/swagger-ui')
 await fs.copy(path.join('assets', 'swagger-ui'), 'dist/assets/swagger-ui')
@@ -155,6 +160,9 @@ await fs.copy(path.join('assets', 'swagger-ui'), 'dist/assets/swagger-ui')
 process.env.COMPANION_BUILD_PLATFORM = platformInfo.nodePlatform
 await $`yarn workspace @companion-app/shared build:ts`
 await $`yarn workspace companion build`
+
+// Build the connection modules vendored under `bundled-modules/` (see tools/build_bundled_modules.mts)
+await $`tsx tools/build_bundled_modules.mts`
 
 // Build webui
 await $`yarn workspace @companion-app/webui build`

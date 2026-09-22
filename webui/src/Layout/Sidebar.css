@@ -468,7 +468,7 @@
 	.sidebar-header {
 		min-height: calc(4rem + 1px); /* stylelint-disable-line function-disallowed-list */
 
-		background-color: #a20210;
+		background-color: #3b5c00;
 		justify-content: left;
 		padding-left: 11px;
 	}
